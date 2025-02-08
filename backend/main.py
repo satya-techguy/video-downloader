@@ -1,60 +1,52 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-import yt_dlp
-import os
-import uuid
+from fastapi.middleware.cors import CORSMiddleware
 
+# Create FastAPI app
 app = FastAPI()
 
-# Directory to store downloads
-DOWNLOAD_DIR = "downloads"
+# Allow frontend access (update origins if needed)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change this for production security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Define the directory where downloaded files are stored
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Get current directory
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")  # Ensure it looks inside 'backend/downloads'
+
+# Ensure download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-class VideoRequest(BaseModel):
-    url: str
-    format: str = "mp4"
-
-@app.post("/download")
-def download_video(request: VideoRequest):
-    video_url = request.url
-    format_type = request.format
-    
-    # Generate a unique filename
-    filename = f"{uuid.uuid4()}.{format_type}"
-    filepath = os.path.join(DOWNLOAD_DIR, filename)
-    
-    # yt-dlp options
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': filepath,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
-        
-        # Return a direct download link
-        return {
-            "message": "Download successful",
-            "download_url": f"http://localhost:8000/files/{filename}"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/files/{filename}")
 def get_file(filename: str):
+    """Download a file from the 'downloads' directory."""
     file_path = os.path.join(DOWNLOAD_DIR, filename)
+    
+    # Check if file exists
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    
+
+    # Serve file as a download
     return FileResponse(
-        file_path, 
-        filename=filename, 
-        media_type="application/octet-stream",  # Forces download
+        file_path,
+        filename=filename,
+        media_type="application/octet-stream",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
 @app.get("/status")
 def status():
-    return {"message": "API is running"}
+    """Check if API is running."""
+    return {"message": "API is running!"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
